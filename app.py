@@ -66,6 +66,8 @@ def initialize_session_state():
 def save_uploaded_file(uploaded_file):
     """アップロードされたファイルを一時保存"""
     try:
+        # ファイルポインタを先頭に戻す
+        uploaded_file.seek(0)
         with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp_file:
             tmp_file.write(uploaded_file.read())
             return tmp_file.name
@@ -114,6 +116,10 @@ def analyze_video(video_path):
         # クリーンアップ
         processor.close()
 
+        # プログレスバーとステータステキストをクリア
+        progress_bar.empty()
+        status_text.empty()
+
         return {
             'video_data': video_data,
             'key_frames': key_frames,
@@ -123,6 +129,12 @@ def analyze_video(video_path):
 
     except Exception as e:
         st.error(f"分析中にエラーが発生しました: {e}")
+        # エラー時もプログレスバーとステータステキストをクリア
+        try:
+            progress_bar.empty()
+            status_text.empty()
+        except:
+            pass
         return None
 
 
@@ -175,13 +187,18 @@ def display_analysis_results(analysis):
     st.markdown("## 🎯 重要フレーム")
 
     if key_frames:
-        cols = st.columns(len(key_frames))
+        # 最大2列に制限
+        num_frames = len(key_frames)
+        num_cols = min(num_frames, 2)
+        cols = st.columns(num_cols)
+
         for idx, (frame_name, frame_data) in enumerate(key_frames.items()):
-            with cols[idx]:
+            col_idx = idx % num_cols
+            with cols[col_idx]:
                 st.markdown(f"**{frame_data['description']}**")
                 # BGRからRGBに変換
                 frame_rgb = cv2.cvtColor(frame_data['frame'], cv2.COLOR_BGR2RGB)
-                st.image(frame_rgb, use_container_width=True)
+                st.image(frame_rgb, use_container_width=True, caption=frame_data['description'])
     else:
         st.warning("重要フレームを検出できませんでした")
 
@@ -211,11 +228,15 @@ def display_history():
 
     # 履歴リスト
     st.markdown("### 過去の分析")
-    for idx, analysis in enumerate(reversed(st.session_state.analysis_history)):
+    history_list = list(reversed(st.session_state.analysis_history))
+    for idx, analysis in enumerate(history_list):
         timestamp = datetime.fromisoformat(analysis['timestamp'])
         score = analysis['analysis_results']['overall_score']
 
-        with st.expander(f"📅 {timestamp.strftime('%Y-%m-%d %H:%M')} - スコア: {score:.1f}/100"):
+        with st.expander(
+            f"📅 {timestamp.strftime('%Y-%m-%d %H:%M')} - スコア: {score:.1f}/100",
+            expanded=False
+        ):
             display_analysis_results(analysis)
 
 
@@ -246,11 +267,11 @@ def main():
         st.markdown("---")
         st.markdown("### ⚙️ 設定")
 
-        if st.button("履歴をクリア"):
+        clear_button = st.button("履歴をクリア")
+        if clear_button:
             st.session_state.analysis_history = []
             st.session_state.current_analysis = None
             st.success("履歴をクリアしました")
-            st.rerun()
 
     # メインコンテンツ
     tab1, tab2, tab3 = st.tabs(["🎥 新規分析", "📊 分析結果", "📈 履歴"])
@@ -261,19 +282,23 @@ def main():
         uploaded_file = st.file_uploader(
             "スパイク動画を選択してください（MP4形式）",
             type=['mp4', 'mov', 'avi'],
-            help="側面から撮影された3〜10秒程度の動画が最適です"
+            help="側面から撮影された3〜10秒程度の動画が最適です",
+            key="video_uploader"
         )
 
         if uploaded_file is not None:
+            # 動画プレビュー
+            st.video(uploaded_file)
+
             # 動画を一時保存
             video_path = save_uploaded_file(uploaded_file)
 
             if video_path:
-                # 動画プレビュー
-                st.video(uploaded_file)
 
                 # 分析ボタン
-                if st.button("🔍 分析を開始", type="primary"):
+                analyze_button = st.button("🔍 分析を開始", type="primary", key="analyze_btn")
+
+                if analyze_button:
                     with st.spinner("分析中..."):
                         analysis = analyze_video(video_path)
 
@@ -281,13 +306,12 @@ def main():
                             st.session_state.current_analysis = analysis
                             st.session_state.analysis_history.append(analysis)
                             st.success("分析が完了しました！「分析結果」タブで確認してください。")
-                            st.balloons()
 
-                        # 一時ファイルを削除
-                        try:
-                            os.unlink(video_path)
-                        except:
-                            pass
+                    # 一時ファイルを削除
+                    try:
+                        os.unlink(video_path)
+                    except:
+                        pass
 
     with tab2:
         if st.session_state.current_analysis:
