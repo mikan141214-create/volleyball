@@ -1,7 +1,7 @@
-streamlit==1.31.0
-mediapipe==0.10.9
-opencv-python-headless==4.9.0.80
-numpy==1.26.3
-pandas==2.2.0
-pillow==10.2.0
-plotly==5.18.0
+streamlit
+mediapipe
+opencv-python-headless
+numpy<2.0.0
+pandas
+pillow
+plotly
