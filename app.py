@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 import numpy as np
 from PIL import Image
+import yt_dlp
+import re
 
 from modules.video_processor import VideoProcessor
 from modules.analyzer import SpikeAnalyzer
@@ -73,6 +75,49 @@ def save_uploaded_file(uploaded_file):
             return tmp_file.name
     except Exception as e:
         st.error(f"ファイルの保存に失敗しました: {e}")
+        return None
+
+
+def is_valid_youtube_url(url):
+    """YouTube URLが有効かチェック"""
+    youtube_regex = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
+    match = re.match(youtube_regex, url)
+    return bool(match)
+
+
+def download_youtube_video(url):
+    """YouTube動画をダウンロード"""
+    try:
+        # 一時ファイルを作成
+        temp_dir = tempfile.mkdtemp()
+        output_path = os.path.join(temp_dir, 'video.mp4')
+
+        # yt-dlpのオプション設定
+        ydl_opts = {
+            'format': 'best[ext=mp4][height<=720]/best[ext=mp4]/best',
+            'outtmpl': output_path,
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        }
+
+        # 動画をダウンロード
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+
+            # ダウンロードされたファイルのパスを確認
+            if os.path.exists(output_path):
+                return output_path
+
+            # 拡張子が異なる場合があるので検索
+            for file in os.listdir(temp_dir):
+                if file.startswith('video'):
+                    return os.path.join(temp_dir, file)
+
+            raise Exception("動画のダウンロードに失敗しました")
+
+    except Exception as e:
+        st.error(f"YouTube動画のダウンロードエラー: {e}")
         return None
 
 
@@ -252,16 +297,23 @@ def main():
     with st.sidebar:
         st.markdown("## 📖 使い方")
         st.markdown("""
-        1. **動画をアップロード**: スパイクの動画（MP4形式）をアップロードします
-        2. **分析開始**: アップロード後、自動的に分析が開始されます
-        3. **結果確認**: スコアと改善ポイントを確認します
-        4. **履歴管理**: 過去の分析結果を比較できます
+        1. **動画を選択**:
+           - ファイルアップロード、または
+           - YouTube URLを入力
+        2. **分析開始**: 動画取得後、分析ボタンをクリック
+        3. **結果確認**: スコアと改善ポイントを確認
+        4. **履歴管理**: 過去の分析結果を比較
 
-        ### 📹 撮影のコツ
+        ### 📹 動画のポイント
         - **角度**: 真横から撮影
         - **距離**: 3〜5メートル
         - **時間**: 3〜10秒程度
         - **画質**: できるだけ高画質で
+
+        ### 🔗 YouTube URLについて
+        - 公開動画のみ対応
+        - 短い動画（3〜10秒）推奨
+        - 埋め込み無効の動画は不可
         """)
 
         st.markdown("---")
@@ -277,41 +329,75 @@ def main():
     tab1, tab2, tab3 = st.tabs(["🎥 新規分析", "📊 分析結果", "📈 履歴"])
 
     with tab1:
-        st.markdown("## 動画をアップロード")
+        st.markdown("## 動画を選択")
 
-        uploaded_file = st.file_uploader(
-            "スパイク動画を選択してください（MP4形式）",
-            type=['mp4', 'mov', 'avi'],
-            help="側面から撮影された3〜10秒程度の動画が最適です",
-            key="video_uploader"
+        # 動画取得方法を選択
+        input_method = st.radio(
+            "動画の取得方法を選択してください",
+            ["📁 ファイルアップロード", "🔗 YouTube URL"],
+            key="input_method"
         )
 
-        if uploaded_file is not None:
-            # 動画プレビュー
-            st.video(uploaded_file)
+        video_path = None
 
-            # 動画を一時保存
-            video_path = save_uploaded_file(uploaded_file)
+        if input_method == "📁 ファイルアップロード":
+            st.markdown("### ファイルをアップロード")
+            uploaded_file = st.file_uploader(
+                "スパイク動画を選択してください（MP4形式）",
+                type=['mp4', 'mov', 'avi'],
+                help="側面から撮影された3〜10秒程度の動画が最適です",
+                key="video_uploader"
+            )
 
-            if video_path:
+            if uploaded_file is not None:
+                # 動画プレビュー
+                st.video(uploaded_file)
 
-                # 分析ボタン
-                analyze_button = st.button("🔍 分析を開始", type="primary", key="analyze_btn")
+                # 動画を一時保存
+                video_path = save_uploaded_file(uploaded_file)
 
-                if analyze_button:
-                    with st.spinner("分析中..."):
-                        analysis = analyze_video(video_path)
+        else:  # YouTube URL
+            st.markdown("### YouTube URLを入力")
+            youtube_url = st.text_input(
+                "YouTube動画のURLを入力してください",
+                placeholder="https://www.youtube.com/watch?v=...",
+                help="YouTubeの動画URLを貼り付けてください（例: https://www.youtube.com/watch?v=xxxxx）",
+                key="youtube_url"
+            )
 
-                        if analysis:
-                            st.session_state.current_analysis = analysis
-                            st.session_state.analysis_history.append(analysis)
-                            st.success("分析が完了しました！「分析結果」タブで確認してください。")
+            if youtube_url:
+                if is_valid_youtube_url(youtube_url):
+                    # プレビュー用にYouTube埋め込み表示
+                    st.video(youtube_url)
 
-                    # 一時ファイルを削除
-                    try:
-                        os.unlink(video_path)
-                    except:
-                        pass
+                    # ダウンロードボタン
+                    if st.button("📥 動画をダウンロード", key="download_btn"):
+                        with st.spinner("YouTube動画をダウンロード中..."):
+                            video_path = download_youtube_video(youtube_url)
+                            if video_path:
+                                st.success("ダウンロード完了！")
+                else:
+                    st.error("無効なYouTube URLです。正しいURLを入力してください。")
+
+        # 分析ボタン（動画パスが取得できた場合のみ表示）
+        if video_path:
+            st.markdown("---")
+            analyze_button = st.button("🔍 分析を開始", type="primary", key="analyze_btn")
+
+            if analyze_button:
+                with st.spinner("分析中..."):
+                    analysis = analyze_video(video_path)
+
+                    if analysis:
+                        st.session_state.current_analysis = analysis
+                        st.session_state.analysis_history.append(analysis)
+                        st.success("分析が完了しました！「分析結果」タブで確認してください。")
+
+                # 一時ファイルを削除
+                try:
+                    os.unlink(video_path)
+                except:
+                    pass
 
     with tab2:
         if st.session_state.current_analysis:
