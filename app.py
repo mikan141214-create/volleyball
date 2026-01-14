@@ -99,10 +99,11 @@ def download_youtube_video(url):
         temp_dir = tempfile.mkdtemp()
         output_path = os.path.join(temp_dir, 'video.%(ext)s')
 
-        # yt-dlpのオプション設定（403エラー対策）
+        # yt-dlpのオプション設定（YouTubeショート対応）
         ydl_opts = {
-            # フォーマット選択（シンプルな形式を優先）
-            'format': 'worst[ext=mp4]/worst',  # 最も小さい動画を選択（高速＆確実）
+            # フォーマット選択（ショート動画に最適化）
+            # 720p以下で音声付き、mp4優先
+            'format': 'best[height<=720][ext=mp4]/best[height<=480]/best',
             'outtmpl': output_path,
             # User-Agentを設定してブラウザのように見せる
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -112,6 +113,8 @@ def download_youtube_video(url):
             'extract_flat': False,
             'nocheckcertificate': True,
             'geo_bypass': True,
+            # 音声と映像を結合
+            'merge_output_format': 'mp4',
             # 追加のヘッダー
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -129,11 +132,19 @@ def download_youtube_video(url):
             downloaded_file = None
             for file in os.listdir(temp_dir):
                 if file.startswith('video'):
-                    downloaded_file = os.path.join(temp_dir, file)
-                    break
+                    file_path = os.path.join(temp_dir, file)
+                    # ファイルサイズが0より大きいかチェック
+                    if os.path.getsize(file_path) > 0:
+                        downloaded_file = file_path
+                        break
 
             if downloaded_file and os.path.exists(downloaded_file):
-                return downloaded_file
+                # ファイルサイズを確認
+                file_size = os.path.getsize(downloaded_file)
+                if file_size > 0:
+                    return downloaded_file
+                else:
+                    raise Exception("ダウンロードされたファイルが空です")
 
             raise Exception("動画のダウンロードに失敗しました")
 
@@ -144,6 +155,11 @@ def download_youtube_video(url):
                     f"この動画は制限されている可能性があります。\n"
                     f"別の動画を試すか、ファイルアップロードをご利用ください。\n\n"
                     f"詳細: {error_msg}")
+        elif "empty" in error_msg.lower():
+            st.error(f"⚠️ YouTube動画のダウンロードに失敗しました。\n\n"
+                    f"この動画のフォーマットが対応していない可能性があります。\n"
+                    f"別の動画を試すか、ファイルアップロードをご利用ください。\n\n"
+                    f"ヒント: 公開されている通常の動画やショート動画を試してください。")
         else:
             st.error(f"YouTube動画のダウンロードエラー: {error_msg}")
         return None
