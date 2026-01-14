@@ -63,6 +63,8 @@ def initialize_session_state():
         st.session_state.analysis_history = []
     if 'current_analysis' not in st.session_state:
         st.session_state.current_analysis = None
+    if 'downloaded_video_path' not in st.session_state:
+        st.session_state.downloaded_video_path = None
 
 
 def save_uploaded_file(uploaded_file):
@@ -95,34 +97,55 @@ def download_youtube_video(url):
     try:
         # 一時ファイルを作成
         temp_dir = tempfile.mkdtemp()
-        output_path = os.path.join(temp_dir, 'video.mp4')
+        output_path = os.path.join(temp_dir, 'video.%(ext)s')
 
-        # yt-dlpのオプション設定
+        # yt-dlpのオプション設定（403エラー対策）
         ydl_opts = {
-            'format': 'best[ext=mp4][height<=720]/best[ext=mp4]/best',
+            # フォーマット選択（シンプルな形式を優先）
+            'format': 'worst[ext=mp4]/worst',  # 最も小さい動画を選択（高速＆確実）
             'outtmpl': output_path,
-            'quiet': True,
-            'no_warnings': True,
+            # User-Agentを設定してブラウザのように見せる
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            # その他のオプション
+            'quiet': False,  # エラーメッセージを表示
+            'no_warnings': False,
             'extract_flat': False,
+            'nocheckcertificate': True,
+            'geo_bypass': True,
+            # 追加のヘッダー
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            }
         }
 
         # 動画をダウンロード
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
 
-            # ダウンロードされたファイルのパスを確認
-            if os.path.exists(output_path):
-                return output_path
-
-            # 拡張子が異なる場合があるので検索
+            # ダウンロードされたファイルを検索
+            downloaded_file = None
             for file in os.listdir(temp_dir):
                 if file.startswith('video'):
-                    return os.path.join(temp_dir, file)
+                    downloaded_file = os.path.join(temp_dir, file)
+                    break
+
+            if downloaded_file and os.path.exists(downloaded_file):
+                return downloaded_file
 
             raise Exception("動画のダウンロードに失敗しました")
 
     except Exception as e:
-        st.error(f"YouTube動画のダウンロードエラー: {e}")
+        error_msg = str(e)
+        if "403" in error_msg or "Forbidden" in error_msg:
+            st.error(f"⚠️ YouTube動画のダウンロードに失敗しました。\n\n"
+                    f"この動画は制限されている可能性があります。\n"
+                    f"別の動画を試すか、ファイルアップロードをご利用ください。\n\n"
+                    f"詳細: {error_msg}")
+        else:
+            st.error(f"YouTube動画のダウンロードエラー: {error_msg}")
         return None
 
 
@@ -347,6 +370,9 @@ def main():
         video_path = None
 
         if input_method == "📁 ファイルアップロード":
+            # YouTube動画のパスをクリア
+            st.session_state.downloaded_video_path = None
+
             st.markdown("### ファイルをアップロード")
             uploaded_file = st.file_uploader(
                 "スパイク動画を選択してください（MP4形式）",
@@ -379,11 +405,16 @@ def main():
                     # ダウンロードボタン
                     if st.button("📥 動画をダウンロード", key="download_btn"):
                         with st.spinner("YouTube動画をダウンロード中..."):
-                            video_path = download_youtube_video(youtube_url)
-                            if video_path:
-                                st.success("ダウンロード完了！")
+                            downloaded_path = download_youtube_video(youtube_url)
+                            if downloaded_path:
+                                st.session_state.downloaded_video_path = downloaded_path
+                                st.success("✅ ダウンロード完了！下の「分析を開始」ボタンをクリックしてください。")
                 else:
                     st.error("無効なYouTube URLです。正しいURLを入力してください。")
+
+            # セッション状態から動画パスを取得
+            if st.session_state.downloaded_video_path:
+                video_path = st.session_state.downloaded_video_path
 
         # 分析ボタン（動画パスが取得できた場合のみ表示）
         if video_path:
@@ -404,6 +435,9 @@ def main():
                     os.unlink(video_path)
                 except:
                     pass
+
+                # セッション状態をクリア
+                st.session_state.downloaded_video_path = None
 
     with tab2:
         if st.session_state.current_analysis:
