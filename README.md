@@ -114,10 +114,14 @@ volleyball/
 
 ### YouTube動画の利用について
 
+- **通常動画とショート動画の両方に対応**しています
 - 公開されているYouTube動画のURLを使用できます
-- 形式例: `https://www.youtube.com/watch?v=xxxxx` または `https://youtu.be/xxxxx`
+- 対応URL形式:
+  - 通常動画: `https://www.youtube.com/watch?v=xxxxx`
+  - 短縮URL: `https://youtu.be/xxxxx`
+  - ショート動画: `https://www.youtube.com/shorts/xxxxx`
 - 埋め込みが無効になっている動画や年齢制限のある動画は利用できません
-- 3〜10秒程度の短い動画が推奨されます
+- 3〜10秒程度の短い動画が推奨されます（YouTubeショートは最適）
 
 ## 🛠 技術スタック
 

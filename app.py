@@ -79,8 +79,13 @@ def save_uploaded_file(uploaded_file):
 
 
 def is_valid_youtube_url(url):
-    """YouTube URLが有効かチェック"""
-    youtube_regex = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'
+    """YouTube URLが有効かチェック（通常動画とショート動画の両方に対応）"""
+    # YouTubeの各種URL形式に対応
+    # - 通常: https://www.youtube.com/watch?v=xxxxx
+    # - 短縮: https://youtu.be/xxxxx
+    # - ショート: https://www.youtube.com/shorts/xxxxx
+    # - 埋め込み: https://www.youtube.com/embed/xxxxx
+    youtube_regex = r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/(watch\?v=|embed/|v/|shorts/|.+\?v=)?([^&=%\?]{11})'
     match = re.match(youtube_regex, url)
     return bool(match)
 
@@ -311,6 +316,7 @@ def main():
         - **画質**: できるだけ高画質で
 
         ### 🔗 YouTube URLについて
+        - 通常動画とショート動画の両方に対応
         - 公開動画のみ対応
         - 短い動画（3〜10秒）推奨
         - 埋め込み無効の動画は不可
@@ -359,9 +365,9 @@ def main():
         else:  # YouTube URL
             st.markdown("### YouTube URLを入力")
             youtube_url = st.text_input(
-                "YouTube動画のURLを入力してください",
-                placeholder="https://www.youtube.com/watch?v=...",
-                help="YouTubeの動画URLを貼り付けてください（例: https://www.youtube.com/watch?v=xxxxx）",
+                "YouTube動画のURLを入力してください（通常動画・ショート動画対応）",
+                placeholder="https://www.youtube.com/watch?v=... または https://www.youtube.com/shorts/...",
+                help="YouTubeの動画URLを貼り付けてください（通常動画・ショート動画の両方に対応）",
                 key="youtube_url"
             )
 
