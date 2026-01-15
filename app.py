@@ -99,28 +99,46 @@ def download_youtube_video(url):
         temp_dir = tempfile.mkdtemp()
         output_path = os.path.join(temp_dir, 'video.%(ext)s')
 
-        # yt-dlpのオプション設定（YouTubeショート対応）
+        # yt-dlpのオプション設定（YouTubeショート対応・403エラー対策強化）
         ydl_opts = {
-            # フォーマット選択（ショート動画に最適化）
-            # 720p以下で音声付き、mp4優先
-            'format': 'best[height<=720][ext=mp4]/best[height<=480]/best',
+            # フォーマット選択を複数のフォールバックで試行
+            'format': (
+                'best[height<=720][ext=mp4]/best[height<=480][ext=mp4]/'
+                'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best'
+            ),
             'outtmpl': output_path,
-            # User-Agentを設定してブラウザのように見せる
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            # ブラウザとして振る舞うための詳細設定
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
             # その他のオプション
-            'quiet': False,  # エラーメッセージを表示
+            'quiet': False,
             'no_warnings': False,
             'extract_flat': False,
             'nocheckcertificate': True,
             'geo_bypass': True,
+            'age_limit': None,
             # 音声と映像を結合
             'merge_output_format': 'mp4',
-            # 追加のヘッダー
+            # 追加のヘッダー（より詳細に）
             'http_headers': {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9,ja;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Referer': 'https://www.youtube.com/',
+                'Origin': 'https://www.youtube.com',
+                'Sec-Fetch-Dest': 'document',
                 'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Ch-Ua': '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+            },
+            # 追加のyt-dlpオプション
+            'extractor_args': {
+                'youtube': {
+                    'skip': ['hls', 'dash'],  # HLSとDASHをスキップしてより互換性の高い形式を使用
+                    'player_client': ['android', 'web'],  # 複数のクライアントを試行
+                }
             }
         }
 
@@ -151,17 +169,28 @@ def download_youtube_video(url):
     except Exception as e:
         error_msg = str(e)
         if "403" in error_msg or "Forbidden" in error_msg:
-            st.error(f"⚠️ YouTube動画のダウンロードに失敗しました。\n\n"
-                    f"この動画は制限されている可能性があります。\n"
-                    f"別の動画を試すか、ファイルアップロードをご利用ください。\n\n"
-                    f"詳細: {error_msg}")
+            st.error(f"⚠️ YouTube動画のダウンロードに失敗しました（403 Forbidden）\n\n"
+                    f"**この問題の原因：**\n"
+                    f"- YouTubeがサーバーからのアクセスを制限しています\n"
+                    f"- 動画に地域制限がかかっている可能性があります\n\n"
+                    f"**解決方法：**\n"
+                    f"1. 🎥 **推奨**: 動画をダウンロードしてファイルアップロードを使用\n"
+                    f"   - YouTubeアプリまたはブラウザで動画を保存\n"
+                    f"   - 保存したMP4ファイルをアップロード\n"
+                    f"2. 別の動画URLを試す\n"
+                    f"3. 画面録画アプリで動画を録画してアップロード\n\n"
+                    f"💡 ヒント: 自分で撮影した動画や、ダウンロード許可のある動画を使用してください。")
         elif "empty" in error_msg.lower():
             st.error(f"⚠️ YouTube動画のダウンロードに失敗しました。\n\n"
                     f"この動画のフォーマットが対応していない可能性があります。\n"
                     f"別の動画を試すか、ファイルアップロードをご利用ください。\n\n"
                     f"ヒント: 公開されている通常の動画やショート動画を試してください。")
         else:
-            st.error(f"YouTube動画のダウンロードエラー: {error_msg}")
+            st.error(f"⚠️ YouTube動画のダウンロードエラー\n\n"
+                    f"エラー詳細: {error_msg}\n\n"
+                    f"**対処方法:**\n"
+                    f"- 動画をダウンロードしてファイルアップロードを使用してください\n"
+                    f"- 別の動画URLを試してください")
         return None
 
 
